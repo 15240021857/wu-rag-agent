@@ -1,0 +1,30 @@
+---
+alwaysApply: true
+description: 企业RAG知识库项目全局架构、数据库、权限总规则，所有模块必须遵守
+---
+
+# 总规则
+项目技术栈：Vue3 + Ant Design Vue + NestJS + Prisma + PostgreSQL + Python FastAPI + LangChain + pgvector
+> 开发顺序约定： 优先完成Vue前端、Nest业务后端；再开发Python RAG；最后启用pgvector扩展。
+> 前期业务开发阶段，前端内置mock接口，不依赖nest.js、Python服务和pgvector
+> Javascript和Node.js/Nest.js的包管理器用pnpm
+
+## 整体架构设计
+- 前端：Vue3 + ant-design-vue 类似JeeSite Vue3前后端分离版风格管理后台
+  - 功能界面：用户登录/注册、用户管理、角色管理、公司管理、部门管理、菜单管理、RAG知识库管理、RAG知识库问答界面
+- 业务后端：NestJS + Prisma + PostgreSQL
+  - 业务模块：用户登录/注册、用户管理、角色管理、公司管理、部门管理、菜单管理、RAG知识库管理、RAG知识库问答界面
+  - 功能模块：
+    - JWT登录
+    - RBAC按钮级别权限、动态菜单
+    - 公司下面有部门和员工（用户）：该员工用户可以登录系统
+    - 知识库的权限：public公开 / custom自定义
+        - public：所有用户可见
+        - custom: 分配指定哪个企业的哪个部门可见、指定用户白名单
+        - 知识库的ownerId: 作者自己可见
+    - 知识库问答
+- RAG服务：python(FastAPI) + langChain + pgvetor + 跟业务后端共用postgresql
+    - /internal/ingest 解析→切分→embedding→向量库
+    - /internal/delete   清理 chunk 和向量
+    - /internal/query    检索→重排→组装 prompt→LLM→答案+引用
+

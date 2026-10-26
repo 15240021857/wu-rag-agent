@@ -1,0 +1,17 @@
+---
+description: 禁止行为与验证
+globs: ["web/**/*"]
+alwaysApply: true
+---
+
+# 严禁
+
+- 提交 `.env`、硬编码 JWT Secret / API Key
+- 前端写死 RAG 内部地址或数据库连接
+- 绕过 `web/src/utils/request.ts` 拦截器（token/401/错误提示）
+- 修改代理目标为个人本地地址（由 `.env.development` 管理）
+- 硬编码菜单结构或用户角色字符串判断
+
+# 验证
+
+改完代码主动提示运行：`pnpm type-check`、`pnpm lint`

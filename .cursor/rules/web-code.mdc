@@ -1,0 +1,18 @@
+---
+description: 代码与权限规范
+globs: ["web/src/**/*.ts", "web/src/**/*.vue"]
+alwaysApply: true
+---
+
+# 代码组织
+
+- API 函数统一放 `web/src/api/`，`.vue` 中禁止直接调 axios
+- 共享类型放 `web/src/types/`，响应统一 `ApiResponse<T>`，分页 `{ list, total, pageNum, pageSize }`
+- 树形/权限/分页等重复逻辑提取到 `web/src/utils/` 或 `web/src/composables/`（`use` 前缀）
+
+# 权限
+
+- 按钮权限标识 `模块:实体:动作`（如 `system:user:create`），模板用 `v-auth` 控制
+- 菜单由后端动态返回生成路由，禁止前端硬编码
+- 知识库可见性：`PUBLIC` / `CUSTOM`（部门+用户白名单）/ owner 可见；前端只按后端返回的 `canAccess`/`permissions` 控制 UI，不做最终过滤
+- 问答页必须展示引用来源（citations），prompt 组装由 RAG 服务负责，前端仅传多轮消息

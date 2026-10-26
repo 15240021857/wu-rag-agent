@@ -1,0 +1,21 @@
+---
+description: 技术栈与整体架构
+globs: ["web/src/**/*", "web/vite.config.*", "web/package.json"]
+alwaysApply: true
+---
+
+# 技术栈
+
+- Vue 3 + TypeScript + Vite + ant-design-vue（JeeSite Vue3 风格管理后台）
+- Pinia（Setup Store）、Vue Router 4、Axios、pnpm
+- TypeScript 严格模式，禁止 `any`（未知用 `unknown`）
+- 组件一律 `<script setup lang="ts">`，禁止 Options API / mixins
+
+# 服务边界
+
+- 业务 API 前缀 `/api`（NestJS）
+- 前端禁止直接请求 RAG 服务 `/internal/*`，问答/引用均走业务后端接口
+
+# 功能范围
+
+登录/注册、用户/角色/公司（部门、员工）/菜单管理、RAG 知识库管理、知识库问答
