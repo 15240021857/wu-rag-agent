@@ -17,8 +17,6 @@ const route = useRoute()
 const router = useRouter()
 const knowledgeOpen = ref(false)
 const documentOpen = ref(false)
-const revectorOpen = ref(false)
-const revectorId = ref('')
 const inspectOpen = ref(false)
 const inspectMode = ref<'detail' | 'preview'>('detail')
 const inspectLoading = ref(false)
@@ -46,7 +44,7 @@ const columns = [
   { title: '分片数', dataIndex: 'chunkCount', key: 'chunkCount', width: 80 },
   { title: '向量化状态', dataIndex: 'vectorStatus', key: 'vectorStatus', width: 120 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
-  { title: '操作', key: 'action', width: 280, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 200, fixed: 'right' as const },
 ]
 
 const knowledgeOptions = computed(() => knowledges.value.map((item) => ({ label: item.name, value: item.id })))
@@ -119,11 +117,6 @@ async function openInspect(record: KnowledgeDocument, mode: 'detail' | 'preview'
   } finally {
     inspectLoading.value = false
   }
-}
-
-function openRevector(record: KnowledgeDocument) {
-  revectorId.value = record.id
-  revectorOpen.value = true
 }
 
 function onDelete(record: KnowledgeDocument) {
@@ -227,7 +220,6 @@ onUnmounted(stopPoll)
           <div class="row-actions">
             <a-button type="link" size="small" @click="openInspect(record, 'detail')">详情</a-button>
             <a-button type="link" size="small" @click="openInspect(record, 'preview')">预览</a-button>
-            <a-button v-auth="'rag:document:update'" type="link" size="small" @click="openRevector(record)">重新向量化</a-button>
             <a-button v-auth="'rag:document:delete'" type="link" size="small" danger @click="onDelete(record)">删除</a-button>
           </div>
         </template>
@@ -246,7 +238,6 @@ onUnmounted(stopPoll)
     </div>
     <KnowledgeModal v-model:open="knowledgeOpen" @saved="onKnowledgeSaved" />
     <DocumentModal v-model:open="documentOpen" :knowledge-id="query.knowledgeId" @saved="load" />
-    <DocumentModal v-model:open="revectorOpen" :document-id="revectorId" @saved="load" />
     <a-modal
       :open="inspectOpen"
       :title="inspectMode === 'detail' ? '文档详情' : '预览文档'"
@@ -270,9 +261,21 @@ onUnmounted(stopPoll)
             <a-descriptions-item label="更新时间" :span="2">{{ formatDateTime(inspectDoc.updatedAt) }}</a-descriptions-item>
           </a-descriptions>
           <p class="inspect-label">分片内容</p>
-          <a-textarea class="inspect-text" readonly :auto-size="{ minRows: 12 }" :value="formatChunkNotes(inspectDoc.chunks)" />
+          <p v-if="!inspectDoc.chunks.length" class="inspect-empty">暂无分片</p>
+          <a-textarea
+            v-else
+            class="inspect-text"
+            readonly
+            :auto-size="{ minRows: 12 }"
+            :value="formatChunkNotes(inspectDoc.chunks)"
+          />
         </template>
-        <a-textarea v-else-if="inspectDoc" class="inspect-text" readonly :value="inspectDoc.content" />
+        <a-textarea 
+          v-else-if="inspectDoc"
+          class="inspect-text"
+          readonly 
+          :auto-size="{ minRows: 12 }"
+          :value="inspectDoc.content" />
       </a-spin>
     </a-modal>
   </PageCard>
@@ -282,6 +285,11 @@ onUnmounted(stopPoll)
 .inspect-label {
   margin: 14px 0 8px;
   color: #5c657a;
+}
+
+.inspect-empty {
+  margin: 0;
+  color: #8b93a7;
 }
 
 .inspect-text {

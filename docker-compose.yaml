@@ -1,0 +1,101 @@
+# 整栈编排放在仓库根目录：web、server、agent-server、postgres 共用这一份。
+#
+# 一键启动（构建并后台运行）：
+#   docker compose up -d --build
+# 或 Windows：
+#   .\start.ps1
+#
+# 只起数据库（本机 Nest 用 server/.env 里的 127.0.0.1:5432）：
+#   docker compose up -d postgres
+#
+# 页面 http://localhost:8080 ，接口经 nginx 转发 /api；
+# RAG 文档 http://localhost:8001/docs
+
+name: wu-rag
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-wu_rag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-wu_rag}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  agent-server:
+    build:
+      context: ./agent-server
+      args:
+        # 国内拉取 PyPI 慢/失败时可在根目录 .env 设置 UV_INDEX_URL
+        UV_INDEX_URL: ${UV_INDEX_URL:-}
+    restart: unless-stopped
+    environment:
+      RAG_HOST: 0.0.0.0
+      RAG_PORT: 8001
+      RAG_RELOAD: "false"
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+    ports:
+      - "${RAG_PORT:-8001}:8001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "uv",
+          "run",
+          "--no-dev",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-wu_rag}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-string}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      RAG_BASE_URL: http://agent-server:8001
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      agent-server:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_USE_MOCK: "false"
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:

@@ -150,7 +150,7 @@ async function onSubmit() {
             企业微信扫码
           </a-button>
         </div>
-        <p class="hint">演示账号 chenmy / manager / staff，密码均为 123456</p>
+        <p class="hint">演示账号 admin / company / wright，密码均为 123456</p>
         <footer>
           <p>首次登录须修改初始密码，连续 5 次错误将锁定 30 分钟。</p>
           <p>© 2024 知识中枢科技有限公司 技术支持 信息技术部</p>

@@ -24,8 +24,22 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+export function apiBase() {
+  return import.meta.env.VITE_API_BASE || '/api'
+}
+
+export function rejectApi(status: number, body: ApiResponse<unknown> | undefined) {
+  const unauthorized = status === 401 || body?.code === 401
+  const text = unauthorized
+    ? body?.message || '登录已过期，请重新登录'
+    : body?.message || (status > 0 ? '请求失败' : '网络异常，请稍后重试')
+  if (unauthorized) onUnauthorized()
+  message.error(text)
+  return new Error(text)
+}
+
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || '/api',
+  baseURL: apiBase(),
   timeout: 15000,
 })
 

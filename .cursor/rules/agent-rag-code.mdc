@@ -1,0 +1,17 @@
+---
+description: agent和rag的项目规则
+globs: ["agent-server/**/*"]
+alwaysApply: true
+---
+
+## 技术栈
+- python的FastAPI：api框架
+- langchain：agent和rag框架
+- embedding: 向量化
+- pgvetor: 向量化相关扩展
+- markdown文件解析和切块：chunkana或更好的
+
+## python rag服务侧职责
+- 解析：前端传过来md，text等文件，首先解析
+- 切块：解析文件后，进行切分，chunkana等三方库切分更精准，如相关段落更完整，对公式，代码块等原子块保留完整，对表格切分更好。
+- 用户提问阶段：需负责用户提问-向量检索-召回-重排-给大模型思考-输出给界面

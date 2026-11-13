@@ -23,8 +23,9 @@ description: 企业RAG知识库项目全局架构、数据库、权限总规则�
         - custom: 分配指定哪个企业的哪个部门可见、指定用户白名单
         - 知识库的ownerId: 作者自己可见
     - 知识库问答
-- RAG服务：python(FastAPI) + langChain + pgvetor + 跟业务后端共用postgresql
-    - /internal/ingest 解析→切分→embedding→向量库
-    - /internal/delete   清理 chunk 和向量
-    - /internal/query    检索→重排→组装 prompt→LLM→答案+引用
+- RAG服务：python(FastAPI) + langChain + pgvetor + SQLAlchemy + 跟业务后端共用postgresql
+    - /internal/rag/parseSplit
+    - /internal/rag/ingest 解析→切分→embedding→向量库
+    - /internal/rag/delete   清理 chunk 和向量
+    - /internal/rag/query    检索→重排→组装 prompt→LLM→答案+引用
 

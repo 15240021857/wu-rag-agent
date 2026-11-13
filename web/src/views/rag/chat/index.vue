@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { fetchConversations, fetchConversation, fetchDocuments, fetchKnowledges, deleteConversation, sendChat } from '@/api/rag'
+import ChatAnswer from '@/components/rag/ChatAnswer.vue'
 import DocumentModal from '@/components/rag/DocumentModal.vue'
 import KnowledgeModal from '@/components/rag/KnowledgeModal.vue'
-import type { ChatMessage, ConversationSummary, Knowledge } from '@/types/rag'
+import { clauseBody, leadingHeadings } from '@/components/rag/renderAnswer'
+import type { ChatMessage, Citation, ConversationSummary, Knowledge } from '@/types/rag'
 import { formatDateTime } from '@/utils/format'
-import { DeleteOutlined, FileAddOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { DeleteOutlined, FileAddOutlined, FilePdfOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -23,10 +25,15 @@ const knowledgeOpen = ref(false)
 const documentOpen = ref(false)
 const processingCount = ref(0)
 const messageBox = ref<HTMLElement>()
+const citeOpen = ref(false)
+const activeCite = ref<Citation | null>(null)
+const citeNo = ref(0)
 let skipKnowledgeWatch = false
 let pollTimer = 0
 
 const knowledgeOptions = computed(() => knowledges.value.map((item) => ({ label: item.name, value: item.id })))
+const citeHeadings = computed(() => leadingHeadings(activeCite.value?.content ?? ''))
+const citeText = computed(() => clauseBody(activeCite.value?.content ?? ''))
 
 watch(
   knowledgeId,
@@ -116,29 +123,85 @@ async function send() {
     ...messages.value.map((item) => ({ role: item.role, content: item.content })),
     { role: 'user' as const, content },
   ]
-  messages.value = [...messages.value, { role: 'user', content }]
+  messages.value = [...messages.value, { role: 'user', content }, { role: 'assistant', content: '' }]
   draft.value = ''
   asking.value = true
+  let started = false
+  let failedBeforeText = false
+  let savedId = ''
   await scrollBottom()
   try {
-    const detail = await sendChat({
-      conversationId: activeId.value || undefined,
-      knowledgeId: knowledgeId.value,
-      systemPrompt: systemPrompt.value.trim(),
-      messages: history,
-    })
-    skipKnowledgeWatch = true
-    activeId.value = detail.id
-    messages.value = detail.messages
-    skipKnowledgeWatch = false
-    await loadConversations()
+    await sendChat(
+      {
+        conversationId: activeId.value || undefined,
+        knowledgeId: knowledgeId.value,
+        systemPrompt: systemPrompt.value.trim(),
+        messages: history,
+      },
+      (event) => {
+        if (event.kind === 'citations') {
+          setCitations(event.citations)
+          void scrollBottom()
+          return
+        }
+        if (event.kind === 'text') {
+          if (event.text) started = true
+          appendAnswer(event.text)
+          void scrollBottom()
+          return
+        }
+        if (event.kind === 'error') {
+          message.error(event.message)
+          if (!started) failedBeforeText = true
+          return
+        }
+        if (event.kind === 'conversation') {
+          savedId = event.conversationId
+          activeId.value = event.conversationId
+        }
+      },
+    )
+    if (failedBeforeText) {
+      messages.value = messages.value.slice(0, -2)
+      draft.value = content
+      return
+    }
+    if (savedId) await loadConversations()
     await scrollBottom()
   } catch {
-    messages.value = messages.value.slice(0, -1)
-    draft.value = content
+    if (!started) {
+      messages.value = messages.value.slice(0, -2)
+      draft.value = content
+    }
   } finally {
     asking.value = false
   }
+}
+
+function appendAnswer(text: string) {
+  const next = messages.value.slice()
+  const last = next[next.length - 1]
+  if (!last || last.role !== 'assistant') return
+  next[next.length - 1] = { ...last, content: last.content + text }
+  messages.value = next
+}
+
+function setCitations(citations: Citation[]) {
+  const next = messages.value.slice()
+  const last = next[next.length - 1]
+  if (!last || last.role !== 'assistant') return
+  next[next.length - 1] = { ...last, citations }
+  messages.value = next
+}
+
+function openCite(cite: Citation, index: number) {
+  activeCite.value = cite
+  citeNo.value = index
+  citeOpen.value = true
+}
+
+function isPdf(name: string) {
+  return name.toLowerCase().endsWith('.pdf')
 }
 
 function removeHistory(id: string) {
@@ -244,20 +307,20 @@ onUnmounted(stopPoll)
       </div>
     </section>
     <section class="panel qa">
-      <h3>问答</h3>
+      <header class="qa-head">
+        <h3>问答</h3>
+      </header>
       <div ref="messageBox" class="messages">
         <a-empty v-if="!messages.length && !asking" description="选择知识库后开始提问，回答会附带引用" />
         <div v-for="(item, index) in messages" :key="`${index}-${item.role}`" class="message" :class="item.role">
-          <div class="bubble">{{ item.content }}</div>
-          <div v-if="item.citations?.length" class="citations">
-            <div v-for="(cite, citeIndex) in item.citations" :key="`${cite.documentId}-${cite.chunkIndex}-${citeIndex}`" class="cite">
-              <strong>{{ cite.documentName }} · 分片 {{ cite.chunkIndex }}</strong>
-              <p>{{ cite.content }}</p>
-            </div>
-          </div>
-        </div>
-        <div v-if="asking" class="message assistant">
-          <div class="bubble pending">正在检索知识库…</div>
+          <ChatAnswer
+            v-if="item.role === 'assistant'"
+            :content="item.content"
+            :citations="item.citations"
+            :pending="asking && index === messages.length - 1 && !item.content"
+            @open="openCite"
+          />
+          <div v-else class="bubble">{{ item.content }}</div>
         </div>
       </div>
       <div class="composer">
@@ -268,9 +331,32 @@ onUnmounted(stopPoll)
           placeholder="输入问题，Enter 发送，Shift + Enter 换行"
           @press-enter="onPressEnter"
         />
-        <a-button type="primary" :loading="asking" :disabled="!draft.trim()" @click="send">发送</a-button>
+        <a-button class="send" type="primary" :loading="asking" :disabled="!draft.trim()" @click="send">发送</a-button>
       </div>
     </section>
+    <a-drawer v-model:open="citeOpen" title="引用来源" placement="right" :width="560" destroy-on-close>
+      <div v-if="activeCite" class="origin">
+        <div class="origin-file">
+          <span class="file-badge" :class="{ pdf: isPdf(activeCite.documentName) }">
+            <FilePdfOutlined v-if="isPdf(activeCite.documentName)" />
+            <FileTextOutlined v-else />
+          </span>
+          <div class="origin-meta">
+            <div class="origin-name">
+              <span class="origin-no">[{{ citeNo }}]</span>
+              <strong>{{ activeCite.documentName }}</strong>
+            </div>
+            <div v-if="citeHeadings.length" class="crumbs">
+              <template v-for="(heading, headingIndex) in citeHeadings" :key="`${heading}-${headingIndex}`">
+                <span v-if="headingIndex" class="crumb-sep">/</span>
+                <span class="crumb" :class="{ 'is-last': headingIndex === citeHeadings.length - 1 }">{{ heading }}</span>
+              </template>
+            </div>
+          </div>
+        </div>
+        <article class="origin-text">{{ citeText }}</article>
+      </div>
+    </a-drawer>
     <KnowledgeModal v-model:open="knowledgeOpen" @saved="onKnowledgeSaved" />
     <DocumentModal v-model:open="documentOpen" :knowledge-id="knowledgeId" @saved="refreshProcessing" />
   </div>
@@ -390,74 +476,48 @@ onUnmounted(stopPoll)
 
 .qa {
   min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #f5f7f6;
+}
+
+.qa-head {
+  padding: 14px 16px 0;
+
+  h3 {
+    margin: 0;
+  }
 }
 
 .messages {
   flex: 1;
   min-height: 0;
-  padding-right: 4px;
+  padding: 16px;
   overflow: auto;
 }
 
 .message {
   display: flex;
-  flex-direction: column;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 
   &.user {
-    align-items: flex-end;
+    justify-content: flex-end;
   }
 
   &.assistant {
-    align-items: flex-start;
+    justify-content: flex-start;
   }
 }
 
 .bubble {
-  max-width: 86%;
-  padding: 10px 12px;
+  max-width: min(72%, 520px);
+  padding: 10px 14px;
+  color: #fff;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #f4f7ff;
-  border-radius: 10px;
-}
-
-.user .bubble {
-  color: #fff;
-  background: #3a67e8;
-}
-
-.pending {
-  color: #8b93a7;
-}
-
-.citations {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: min(86%, 640px);
-  margin-top: 8px;
-}
-
-.cite {
-  max-height: 160px;
-  padding: 8px 10px;
-  overflow: auto;
-  background: #fff;
-  border: 1px solid #e6ebff;
-  border-left: 3px solid #3a67e8;
-  border-radius: 8px;
-
-  strong {
-    color: #3a67e8;
-    font-size: 12px;
-  }
-
-  p {
-    margin: 4px 0 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+  background: #178f62;
+  border-radius: 14px 14px 4px 14px;
+  box-shadow: 0 6px 16px rgba(23, 143, 98, 0.16);
 }
 
 .composer {
@@ -465,7 +525,107 @@ onUnmounted(stopPoll)
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
-  margin-top: 12px;
+  padding: 12px 16px 16px;
+  background: #fff;
+  border-top: 1px solid #e8eeea;
+
+  :deep(textarea) {
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+}
+
+.send {
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 8px;
+
+  &:not(:disabled) {
+    background: #178f62;
+    border-color: #178f62;
+
+    &:hover {
+      background: #127a54;
+      border-color: #127a54;
+    }
+  }
+}
+
+.origin-file {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+  padding: 14px;
+  background: #f7f8fa;
+  border-radius: 12px;
+}
+
+.file-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: #178f62;
+  font-size: 18px;
+  background: #e8f7f0;
+  border-radius: 10px;
+
+  &.pdf {
+    color: #e25c4a;
+    background: #fff1f0;
+  }
+}
+
+.origin-meta {
+  min-width: 0;
+}
+
+.origin-name {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+
+  strong {
+    color: #1f2430;
+    font-size: 15px;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+}
+
+.origin-no {
+  flex: none;
+  color: #14915c;
+  font-weight: 600;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.crumb,
+.crumb-sep {
+  color: #8b93a7;
+  font-size: 12px;
+}
+
+.crumb.is-last {
+  color: #14915c;
+}
+
+.origin-text {
+  color: #3d4654;
+  font-size: 14px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 1200px) {

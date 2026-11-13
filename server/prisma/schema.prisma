@@ -1,0 +1,289 @@
+generator client {
+  provider      = "prisma-client-js"
+  // native: 本机开发；debian-openssl-3.0.x: node:22-bookworm Docker 运行时
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Status {
+  NORMAL
+  DISABLED
+
+  @@map("status")
+}
+
+enum DataScope {
+  ALL
+  COMPANY
+  DEPT
+  SELF
+
+  @@map("data_scope")
+}
+
+enum MenuType {
+  DIR
+  MENU
+  BUTTON
+
+  @@map("menu_type")
+}
+
+enum KnowledgeVisibility {
+  PUBLIC
+  CUSTOM
+
+  @@map("knowledge_visibility")
+}
+
+enum ChunkMethod {
+  CHAR
+  FIXED
+
+  @@map("chunk_method")
+}
+
+enum VectorStatus {
+  PROCESSING
+  READY
+  FAILED
+
+  @@map("vector_status")
+}
+
+enum MessageRole {
+  user
+  assistant
+
+  @@map("message_role")
+}
+
+model Company {
+  id        String    @id @default(cuid())
+  name      String
+  code      String    @unique
+  parentId  String?   @map("parent_id")
+  parent    Company?  @relation("CompanyTree", fields: [parentId], references: [id])
+  children  Company[] @relation("CompanyTree")
+  sort      Int       @default(0)
+  leader    String    @default("")
+  phone     String    @default("")
+  address   String    @default("")
+  status    Status    @default(NORMAL)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  depts Dept[]
+  users User[]
+
+  @@map("companies")
+}
+
+model Dept {
+  id        String   @id @default(cuid())
+  name      String
+  code      String
+  companyId String   @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id])
+  parentId  String?  @map("parent_id")
+  parent    Dept?    @relation("DeptTree", fields: [parentId], references: [id])
+  children  Dept[]   @relation("DeptTree")
+  sort      Int      @default(0)
+  leader    String   @default("")
+  status    Status   @default(NORMAL)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users          User[]
+  knowledgeDepts KnowledgeDept[] 
+
+  @@unique([companyId, code])
+  @@map("depts")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  nickname     String   @default("")
+  employeeName String   @default("") @map("employee_name")
+  companyId    String   @map("company_id")
+  company      Company  @relation(fields: [companyId], references: [id])
+  deptId       String   @map("dept_id")
+  dept         Dept     @relation(fields: [deptId], references: [id])
+  email        String   @default("")
+  mobile       String   @default("")
+  officePhone  String   @default("") @map("office_phone")
+  status       Status   @default(NORMAL)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  roles           UserRole[]
+  ownedKnowledges Knowledge[]     @relation("KnowledgeOwner")
+  knowledgeUsers  KnowledgeUser[]
+  conversations   Conversation[]
+
+  @@map("users")
+}
+
+model Role {
+  id        String    @id @default(cuid())
+  name      String
+  code      String    @unique
+  sort      Int       @default(0)
+  status    Status    @default(NORMAL)
+  dataScope DataScope @default(SELF) @map("data_scope")
+  remark    String    @default("")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  users UserRole[]
+  menus RoleMenu[]
+
+  @@map("roles")
+}
+
+model Menu {
+  id         String   @id @default(cuid())
+  parentId   String?  @map("parent_id")
+  parent     Menu?    @relation("MenuTree", fields: [parentId], references: [id])
+  children   Menu[]   @relation("MenuTree")
+  name       String
+  path       String   @default("")
+  component  String   @default("")
+  icon       String   @default("")
+  sort       Int      @default(0)
+  type       MenuType
+  permission String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  roles RoleMenu[]
+
+  @@map("menus")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RoleMenu {
+  roleId String @map("role_id")
+  menuId String @map("menu_id")
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuId])
+  @@map("role_menus")
+}
+
+model Knowledge {
+  id          String              @id @default(cuid())
+  name        String
+  description String              @default("")
+  visibility  KnowledgeVisibility @default(PUBLIC)
+  ownerId     String              @map("owner_id")
+  owner       User                @relation("KnowledgeOwner", fields: [ownerId], references: [id])
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  depts         KnowledgeDept[]
+  users         KnowledgeUser[]
+  documents     Document[]
+  conversations Conversation[]
+
+  @@map("knowledges")
+}
+
+model KnowledgeDept {
+  knowledgeId String    @map("knowledge_id")
+  deptId      String    @map("dept_id")
+  knowledge   Knowledge @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  dept        Dept      @relation(fields: [deptId], references: [id], onDelete: Cascade)
+
+  @@id([knowledgeId, deptId])
+  @@map("knowledge_depts")
+}
+
+model KnowledgeUser {
+  knowledgeId String    @map("knowledge_id")
+  userId      String    @map("user_id")
+  knowledge   Knowledge @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([knowledgeId, userId])
+  @@map("knowledge_users")
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  knowledgeId    String       @map("knowledge_id")
+  knowledge      Knowledge    @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  fileName       String       @map("file_name")
+  fileType       String       @map("file_type")
+  size           Int
+  content        String       @db.Text
+  chunkMethod    ChunkMethod  @map("chunk_method")
+  chunkSeparator String       @default("") @map("chunk_separator")
+  chunkSize      Int          @map("chunk_size")
+  vectorStatus   VectorStatus @default(PROCESSING) @map("vector_status")
+  ready          Boolean      @default(false)
+  progress       Int          @default(0)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  chunks DocumentChunk[]
+
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  index      Int
+  content    String   @db.Text
+  charCount  Int      @map("char_count")
+
+  @@unique([documentId, index])
+  @@map("document_chunks")
+}
+
+model Conversation {
+  id           String    @id @default(cuid())
+  title        String    @default("")
+  knowledgeId  String    @map("knowledge_id")
+  knowledge    Knowledge @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id])
+  systemPrompt String    @default("") @map("system_prompt") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  messages ChatMessage[]
+
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String       @db.Text
+  citations      Json?
+  sort           Int
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@map("chat_messages")
+}

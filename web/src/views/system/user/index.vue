@@ -88,6 +88,7 @@ const columns = [
   { title: '归属机构', dataIndex: 'deptName', key: 'deptName', width: 120 },
   { title: '归属公司', dataIndex: 'companyName', key: 'companyName', width: 140 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
+  { title: '系统角色', dataIndex: 'roleNames', key: 'roleNames', width: 100, slots: { customRender: 'roleNames' } },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
   { title: '电子邮箱', dataIndex: 'email', key: 'email', width: 180 },
   { title: '手机号码', dataIndex: 'mobile', key: 'mobile', width: 140 },
@@ -364,6 +365,9 @@ onMounted(() => {
         :pagination="false"
         :scroll="{ x: 1560 }"
       >
+        <template #roleNames="{ record }">
+          <div><a-tag v-for="role in record?.roleNames ?? []" :key="role" color="default">{{ role }}</a-tag></div>
+        </template>
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'index'">{{ rowIndex(index) }}</template>
           <template v-else-if="column.key === 'status'">

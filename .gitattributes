@@ -1,0 +1,6 @@
+docker-compose.yaml text eol=lf
+.env.example text eol=lf
+server/Dockerfile text eol=lf
+server/docker-entrypoint.sh text eol=lf
+web/Dockerfile text eol=lf
+web/nginx.conf text eol=lf

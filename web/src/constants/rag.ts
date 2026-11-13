@@ -1,5 +1,7 @@
 import type { ChunkMethod, KnowledgeVisibility, VectorStatus } from '@/types/rag'
 
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+
 export const CHUNK_METHOD_OPTIONS: Array<{ label: string; value: ChunkMethod }> = [
   { label: '字符切分', value: 'CHAR' },
   { label: '固定字符切分', value: 'FIXED' },

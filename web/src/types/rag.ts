@@ -52,25 +52,6 @@ export interface DocumentDetail extends KnowledgeDocument {
   chunks: DocumentChunk[]
 }
 
-export interface DocumentPayload {
-  knowledgeId: string
-  fileName: string
-  fileType: string
-  size: number
-  content: string
-  chunkMethod: ChunkMethod
-  chunkSeparator: string
-  chunkSize: number
-  chunks: Array<{ content: string }>
-}
-
-export interface RevectorizePayload {
-  chunkMethod: ChunkMethod
-  chunkSeparator: string
-  chunkSize: number
-  chunks: Array<{ content: string }>
-}
-
 export interface DocumentQuery extends PageQuery {
   knowledgeId: string
   fileName: string
@@ -109,3 +90,10 @@ export interface ChatPayload {
   systemPrompt: string
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
 }
+
+export type ChatStreamEvent =
+  | { kind: 'text'; text: string }
+  | { kind: 'citations'; citations: Citation[] }
+  | { kind: 'error'; message: string }
+  | { kind: 'conversation'; conversationId: string }
+  | { kind: 'done' }

@@ -1,0 +1,107 @@
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Body
+from langchain_text_splitters import MarkdownHeaderTextSplitter
+
+from rag_server.schemas.parse_split import ParseSplitBody, ParseSplitResponse
+from rag_server.services.markdown_split import (
+    DEFAULT_CHUNK_SIZE,
+    MAX_CHUNK_SIZE,
+    MIN_CHUNK_SIZE,
+    SplitError,
+    decode_upload,
+    split_markdown,
+)
+from rag_server.settings import settings
+
+router = APIRouter(
+    tags=["rags"]
+)
+
+# 接收file来解析，切块，向量化，入库
+@router.post("/addDocFile")
+async def add_doc_file(
+    file: UploadFile = File(...),
+    name: str = Form(default="document.md"),
+    knowledge_base_id: str = Form(...),
+    doc_id: str = Form(...),
+):
+    file_type = file.content_type or "text/markdown"
+    try:
+        # 读取文件
+        data = await file.read()
+        contents = data.decode('utf-8-sig')
+        print(f"contents: -----------------------{contents}")
+        # 切分
+        docs_chunks = _split(contents, name)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="UnicodeDecodeError-Invalid file content") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Exception-Invalid file content") from exc
+    return {
+        "name": name,
+        "file_type": file_type,
+        "contents": contents,
+        "docs_chunks": docs_chunks,
+    }
+
+# 根据content来进行切分
+@router.post("/addDocContent")
+async def add_doc_content(
+    content: str = Form(...),
+    name: str = Form(default="document.md"),
+    knowledge_base_id: str = Form(...),
+    doc_id: str = Form(...),
+):
+    print(f"content: -----------------------{content}")
+    print(f"name: -----------------------{name}")
+    docs_chunks = _split(content, name)
+    return {
+        "docs_chunks": docs_chunks,
+    }
+
+# ----------------------------
+
+@router.post("/parseSplit/file", response_model=ParseSplitResponse)
+async def parse_split_file(
+    file: UploadFile = File(...),
+    max_chunk_size: int = Form(
+        default=DEFAULT_CHUNK_SIZE,
+        alias="maxChunkSize",
+        ge=MIN_CHUNK_SIZE,
+        le=MAX_CHUNK_SIZE,
+    ),
+) -> ParseSplitResponse:
+    """上传 md、markdown 或 txt，解析后切块。"""
+    name = file.filename or "document.md"
+    data = await file.read()
+    try:
+        _file_type, text = decode_upload(data, name, settings.max_upload_bytes)
+    except SplitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    print(f"text-upload-api: -------------{text}")
+    return _split(text, name)
+
+
+def _split(content: str, file_name: str):
+    try:
+        # view = split_markdown(
+        #     content,
+        #     file_name,
+        #     max_chunk_size,
+        #     settings.max_upload_bytes,
+        # )
+        headers_to_split_on = [
+            ("#", "h1"),
+            ("##", "h2"),
+            ("###", "h3"),
+        ]   
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on, strip_headers=True)
+        split_docs = markdown_splitter.split_text(content)
+        # 拿到的数据
+        docs_chunks = [{
+            "content": chunk.page_content,
+            "metadata": chunk.metadata,
+        } for chunk in split_docs]
+        print(f"docs_chunks: -----------------------{docs_chunks}")
+    except SplitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return docs_chunks

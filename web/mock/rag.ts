@@ -666,9 +666,9 @@ function retrieve(knowledge: DbKnowledge, question: string) {
   if (!picked.length) {
     return { answer: '没有在已就绪的文档里找到相关内容。', citations: [] as Citation[] }
   }
-  const body = picked.map((item, index) => `（${index + 1}）${item.content}`).join('\n')
+  const body = picked.map((item, index) => `${item.content.trim()} [${index + 1}]`).join('\n\n')
   return {
-    answer: `根据知识库「${knowledge.name}」中的资料：\n${body}`,
+    answer: `根据知识库「${knowledge.name}」中的资料：\n\n${body}`,
     citations: picked,
   }
 }
