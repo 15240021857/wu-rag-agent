@@ -22,6 +22,7 @@ class ChatModelUnavailableError(RuntimeError):
 
 
 DEFAULT_SYSTEM_PROMPT = "根据资料回答，资料没有的兜底回答在资料中没找到相关内容，回答里用资料编号标注依据"
+# 引用编号规则提示词
 CITE_RULE = "若回答依据了某条资料，在对应句末用该资料的编号标注，格式如 [1]。编号必须与资料编号一致，不要编造资料里没有的编号。"
 
 
@@ -102,6 +103,7 @@ class RagService:
     ) -> AsyncIterator[str]:
         del doc_id
         print(f"{query} retrieve starting========================")
+        # 拿到检索拼接messages + 引用来源citations
         messages, citations = self._getRetrieveMessages(query, kb_id, system_prompt)
         model = self.get_chat_model()
         return self._iter_answer_events(messages, model, citations)
@@ -168,12 +170,13 @@ class RagService:
             "collection_name": collection_name,
             "dropped": existed,
         }
-    # 拿到rag检索并拼接资料+问题messages：检索召回-重排-拼接
+    # rag检索拿到拼接资料+问题messages：检索召回-重排-拼接
     def _getRetrieveMessages(self, query: str, kb_id: str, system_prompt: str):
         dense_req = dense_request(query, kb_id, 10)
         sparse_req = sparse_request(query, kb_id, 10)
         ranker = dashscopeReranker(query)
         client = self.get_client()
+        # cross-encoder的方式 将稠密和稀疏检索召回结果交给千问rerank重排
         rerank_res = client.hybrid_search(
             collection_name=self.collection_name,
             reqs=[dense_req, sparse_req],
@@ -181,6 +184,7 @@ class RagService:
             limit=2,
             output_fields=["content", "kb_id", "doc_id"],
         )
+        # 拿到rerank 最终chunks
         hits = rerank_res[0] if rerank_res else []
         context, citations = format_sources(hits)
         prompt = system_prompt.strip() or DEFAULT_SYSTEM_PROMPT
@@ -194,7 +198,7 @@ class RagService:
 
 rag_service = RagService()
 
-
+# 从rerank最终chunks中拿到content原文 + 引用
 def format_sources(hits: object) -> tuple[str, list[dict[str, str | int]]]:
     if not isinstance(hits, list):
         return "", []
@@ -279,7 +283,7 @@ def rrfRanker():
         },
     )
 
-
+# 阿里千问reranker
 def dashscopeReranker(query):
     return Function(
         name="dashscope",

@@ -50,6 +50,8 @@ const SUPERSCRIPTS: Record<string, string> = {
   '9': '⁹',
 }
 
+// 按行把模型回答收成块。优先认列表、提示和标题，剩下的连续正文合成段落。
+// 空行不单独成块，只用来把前后两段切开。parseRuns 再把每行里的 [1] 和 **加粗** 拆开。
 export function renderAnswer(content: string): AnswerBlock[] {
   const lines = content.replace(/\r\n/g, '\n').split('\n')
   const blocks: AnswerBlock[] = []
@@ -60,6 +62,7 @@ export function renderAnswer(content: string): AnswerBlock[] {
       index += 1
       continue
     }
+    // 「1. 」「2、」必须连续。中间插入别的行就会结束这个有序列表。
     if (ORDERED.test(line)) {
       const items: Run[][] = []
       while (index < lines.length && ORDERED.test(lines[index] ?? '')) {
@@ -70,6 +73,7 @@ export function renderAnswer(content: string): AnswerBlock[] {
       blocks.push({ kind: 'ol', items })
       continue
     }
+    // 「- 」「* 」「• 」同样收成一个无序列表，规则和上面相同。
     if (UNORDERED.test(line)) {
       const items: Run[][] = []
       while (index < lines.length && UNORDERED.test(lines[index] ?? '')) {
@@ -80,17 +84,20 @@ export function renderAnswer(content: string): AnswerBlock[] {
       blocks.push({ kind: 'ul', items })
       continue
     }
+    // 以 ⚠ 开头的一行单独做成提示块，不并进前后段落。
     if (CALLOUT.test(line)) {
       blocks.push({ kind: 'callout', runs: parseRuns(line) })
       index += 1
       continue
     }
+    // 「# 标题」不保留标题级别，压成加粗段落。
     const heading = HEADING.exec(line)
     if (heading?.[1]) {
       blocks.push({ kind: 'p', runs: [{ kind: 'bold', text: heading[1] }] })
       index += 1
       continue
     }
+    // 其余连续非空行合成一段，直到空行，或碰到列表、提示、标题。
     const paragraph: string[] = []
     while (index < lines.length) {
       const current = lines[index] ?? ''

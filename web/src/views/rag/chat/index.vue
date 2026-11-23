@@ -10,7 +10,7 @@ import { DeleteOutlined, FileAddOutlined, FilePdfOutlined, FileTextOutlined, Plu
 import { message, Modal } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
-const DEFAULT_PROMPT = '你是企业知识库助手。请只根据所选知识库中的内容回答问题；如果资料不足，请说明未找到依据。'
+const DEFAULT_PROMPT = '你是企业知识库助手。根据资料回答，资料没有的兜底回答在资料中没找到相关内容，回答里用资料编号标注依据。'
 
 const knowledges = ref<Knowledge[]>([])
 const conversations = ref<ConversationSummary[]>([])
