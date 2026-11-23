@@ -1,6 +1,8 @@
 from collections.abc import AsyncIterator
 import json
+import logging
 import os
+import tempfile
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
@@ -11,10 +13,11 @@ from rag_server.db.milvus.milvus_init import (
     get_milvus_client,
     reset_milvus_client,
 )
-from rag_server.utils.utils import doc_split
+from rag_server.utils.utils import doc_split, clean_mineru_tables
 from pymilvus import (
     AnnSearchRequest,
 )
+from mineru import MinerU
 
 
 class ChatModelUnavailableError(RuntimeError):
@@ -48,6 +51,7 @@ class RagService:
         self.collection_name = collection_name
         self.client: MilvusClient | None = None
         self.chat_model: ChatOpenAI | None = None
+        self.minerU: MinerU | None = None
     # 获取milvus向量库客户端
     def get_client(self) -> MilvusClient:
         if self.client is None:
@@ -58,13 +62,18 @@ class RagService:
         if self.chat_model is None:
             self.chat_model = build_chat_model()
         return self.chat_model
+    # 获取minerU实例
+    def get_minerU(self) -> MinerU:
+        if self.minerU is None:
+            api_key=os.getenv("MINERU_API_KEY")
+            logging.info(f"minerU api_key=======: {api_key}")
+            self.minerU = MinerU(api_key)
+        return self.minerU
 
     # 接收文件，切分，向量化，入库
     async def add_chunk(self, file, name: str, kb_id: str, doc_id: str):
-        file_type = file.content_type or "text/markdown"
-        data = await file.read()
-        contents = data.decode("utf-8-sig")
-        split_docs = doc_split(contents, name)
+        md_contents, file_suffix = await self._load_file_to_markdown(file, name)
+        split_docs = doc_split(md_contents, name, file_suffix)
         chunk_data = [
             {
                 "content": chunk.page_content,
@@ -88,7 +97,7 @@ class RagService:
             "code": 200,
             "message": "success",
             "name": name,
-            "file_type": file_type,
+            "file_type": file_suffix,
             "res": insert_result,
             "docs_chunks": chunk_data,
         }
@@ -195,6 +204,40 @@ class RagService:
         ]
         # print(f"messages:================ {messages}")
         return messages, citations
+    # 加载文件，转成md内容，注意txt后缀文件原样返回,支持md, pdf, pdf(ocr), docx, xlsx, csv, ppt等，
+    async def _load_file_to_markdown(self, file, file_name: str,) -> tuple[str, str]:
+        file_suffix = file.filename.split(".")[-1]
+        logging.info(f"file=========================================: {file}")
+        file_type_list = ["pdf", "docx", "xlsx", "csv", "ppt"]
+        # 读出二进制数据
+        data = await file.read()
+        md_content = ""
+        if file_suffix == "txt":
+            txt_content = data.decode("utf-8-sig")
+            return txt_content, file_suffix
+        if file_suffix == "md":
+            md_content = data.decode("utf-8-sig")
+            return md_content, file_suffix
+
+        if file_suffix in file_type_list:
+            # ================用miner-处理文件，返回markdown内容===============
+            # 先存tempfile临时文件，解析后删除
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_suffix}') as temp:
+                temp.write(data)
+                temp_path = temp.name
+            try:
+                md_result = self.get_minerU().extract(temp_path)
+                md_content = clean_mineru_tables(md_result.markdown)
+
+                print(f"minerU md_content=============: {md_content}")
+                logging.info(f"minerU md_content=======: {md_content}")
+                return md_content, file_suffix
+            except Exception as e:
+                logging.error(f"minerU error=======: {e}")
+                return "", file_suffix
+            finally:
+                os.remove(temp_path)
+        raise ValueError(f"unsupported file type: {file_suffix}")
 
 rag_service = RagService()
 
