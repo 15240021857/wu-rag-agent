@@ -41,5 +41,10 @@ describe('assertChunks', () => {
 describe('assertFileType', () => {
   it('rejects an unsupported extension', () => {
     expect(() => assertFileType('exe')).toThrow('仅支持');
+    expect(() => assertFileType('json')).toThrow('仅支持');
+  });
+
+  it('accepts pdf', () => {
+    expect(() => assertFileType('pdf')).not.toThrow();
   });
 });

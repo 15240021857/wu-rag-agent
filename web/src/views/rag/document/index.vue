@@ -4,7 +4,7 @@ import DocumentModal from '@/components/rag/DocumentModal.vue'
 import KnowledgeModal from '@/components/rag/KnowledgeModal.vue'
 import PageCard from '@/components/PageCard.vue'
 import { useTable } from '@/composables/useTable'
-import { chunkMethodLabel, VECTOR_STATUS_OPTIONS, vectorStatusLabel } from '@/constants/rag'
+import { chunkMethodLabel, previewsAsText, VECTOR_POLL_MS, VECTOR_STATUS_OPTIONS, vectorStatusLabel } from '@/constants/rag'
 import type { DocumentDetail, Knowledge, KnowledgeDocument, VectorStatus } from '@/types/rag'
 import { formatChunkNotes } from '@/utils/chunk'
 import { formatDateTime, formatFileSize } from '@/utils/format'
@@ -77,7 +77,7 @@ watch(
     if (!processing) return
     pollTimer = window.setInterval(() => {
       void refreshQuiet()
-    }, 800)
+    }, VECTOR_POLL_MS)
   },
 )
 
@@ -270,12 +270,16 @@ onUnmounted(stopPoll)
             :value="formatChunkNotes(inspectDoc.chunks)"
           />
         </template>
-        <a-textarea 
+        <p v-else-if="inspectDoc && !previewsAsText(inspectDoc.fileType)" class="inspect-empty">
+          该格式暂不支持原文预览
+        </p>
+        <a-textarea
           v-else-if="inspectDoc"
           class="inspect-text"
-          readonly 
+          readonly
           :auto-size="{ minRows: 12 }"
-          :value="inspectDoc.content" />
+          :value="inspectDoc.content"
+        />
       </a-spin>
     </a-modal>
   </PageCard>

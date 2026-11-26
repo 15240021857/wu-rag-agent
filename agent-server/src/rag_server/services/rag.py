@@ -8,6 +8,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
 from pymilvus import MilvusClient, Function, FunctionType
+from rag_server.core.logging import get_logger
 from rag_server.db.milvus.milvus_init import (
     COLLECTION_NAME,
     get_milvus_client,
@@ -18,8 +19,9 @@ from pymilvus import (
     AnnSearchRequest,
 )
 from mineru import MinerU
+from rag_server.settings import settings
 
-
+log = get_logger(__name__)
 class ChatModelUnavailableError(RuntimeError):
     """对话模型客户端无法创建，通常是缺少 API Key 或 Base URL。"""
 
@@ -65,8 +67,7 @@ class RagService:
     # 获取minerU实例
     def get_minerU(self) -> MinerU:
         if self.minerU is None:
-            api_key=os.getenv("MINERU_API_KEY")
-            logging.info(f"minerU api_key=======: {api_key}")
+            api_key=settings.mineru_api_key
             self.minerU = MinerU(api_key)
         return self.minerU
 
@@ -82,6 +83,7 @@ class RagService:
             }
             for chunk in split_docs
         ]
+        log.info(f"chunk_data: {chunk_data}")
         client = self.get_client()
         res = client.insert(
             collection_name=self.collection_name,
@@ -162,6 +164,19 @@ class RagService:
             # "res": rerank_res,
         }
 
+    # 按知识库 + 文档删除向量。文档还没入库时 delete_count 为 0，也算成功。
+    def delete_doc_vectors(self, kb_id: str, doc_id: str) -> dict[str, int]:
+        if not kb_id or not doc_id:
+            raise ValueError("kb_id and doc_id are required")
+        client = self.get_client()
+        if not client.has_collection(self.collection_name):
+            return {"delete_count": 0}
+        result = client.delete(
+            collection_name=self.collection_name,
+            filter=doc_filter(kb_id, doc_id),
+        )
+        return {"delete_count": delete_count_of(result)}
+
     def drop_milvus_collection(self, collection_name: str):
         if not collection_name:
             return {
@@ -226,11 +241,14 @@ class RagService:
                 temp.write(data)
                 temp_path = temp.name
             try:
-                md_result = self.get_minerU().extract(temp_path)
+                # 扫描版 pdf 没有单独后缀。MinerU 只有显式传入 ocr 才会带上 is_ocr。
+                if file_suffix == "pdf":
+                    md_result = self.get_minerU().extract(temp_path, ocr=True)
+                else:
+                    md_result = self.get_minerU().extract(temp_path)
                 md_content = clean_mineru_tables(md_result.markdown)
 
-                print(f"minerU md_content=============: {md_content}")
-                logging.info(f"minerU md_content=======: {md_content}")
+                # logging.info(f"minerU md_content=======: {md_content}")
                 return md_content, file_suffix
             except Exception as e:
                 logging.error(f"minerU error=======: {e}")
@@ -288,9 +306,25 @@ def message_chunk_text(content: object) -> str:
     return "".join(parts)
 
 
+def milvus_quote(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def kb_filter(kb_id: str) -> str:
-    escaped = kb_id.replace("\\", "\\\\").replace('"', '\\"')
-    return f'kb_id == "{escaped}"'
+    return f"kb_id == {milvus_quote(kb_id)}"
+
+
+def doc_filter(kb_id: str, doc_id: str) -> str:
+    return f"kb_id == {milvus_quote(kb_id)} and doc_id == {milvus_quote(doc_id)}"
+
+
+def delete_count_of(result: object) -> int:
+    if isinstance(result, dict):
+        raw = result.get("delete_count", result.get("delete_cnt", 0))
+    else:
+        raw = getattr(result, "delete_count", getattr(result, "delete_cnt", 0))
+    return int(raw or 0)
 
 
 def dense_request(query_embedding, kb_id: str, limit=10):

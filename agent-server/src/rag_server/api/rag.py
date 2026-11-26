@@ -87,6 +87,19 @@ async def retrieve(
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
+# 删除一篇文档在 Milvus 里的向量。Nest 删文档前调用。
+@router.delete("/deleteDocVectors")
+async def delete_doc_vectors(
+    kb_id: str = Query(...),
+    doc_id: str = Query(...),
+):
+    try:
+        return rag_service.delete_doc_vectors(kb_id, doc_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (MilvusUnavailableError, MilvusException) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
 # 删除 milvus collection
 @router.delete("/dropMilvusCollection")
 async def drop_milvus_collection(collection_name: str = Query(...)):

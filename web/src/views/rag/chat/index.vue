@@ -4,6 +4,7 @@ import ChatAnswer from '@/components/rag/ChatAnswer.vue'
 import DocumentModal from '@/components/rag/DocumentModal.vue'
 import KnowledgeModal from '@/components/rag/KnowledgeModal.vue'
 import { clauseBody, leadingHeadings } from '@/components/rag/renderAnswer'
+import { VECTOR_POLL_MS } from '@/constants/rag'
 import type { ChatMessage, Citation, ConversationSummary, Knowledge } from '@/types/rag'
 import { formatDateTime } from '@/utils/format'
 import { DeleteOutlined, FileAddOutlined, FilePdfOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons-vue'
@@ -51,7 +52,7 @@ watch(processingCount, (count) => {
   if (count <= 0) return
   pollTimer = window.setInterval(() => {
     void refreshProcessing()
-  }, 800)
+  }, VECTOR_POLL_MS)
 })
 
 async function loadKnowledges() {

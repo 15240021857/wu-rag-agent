@@ -14,7 +14,13 @@ import { rethrowPrisma } from '../../../common/utils/prisma-error.js';
 import type { AuthUser } from '../../auth/auth.types.js';
 import { KnowledgeAccessService } from '../knowledge/knowledge-access.service.js';
 import { knowledgeAccessWhere } from '../knowledge-access.js';
-import { assertChunks, separatorOf, type ChunkDraft } from './chunks.js';
+import {
+  assertChunks,
+  isBinaryFileType,
+  normalizeUploadName,
+  separatorOf,
+  type ChunkDraft,
+} from './chunks.js';
 import { IngestQueue } from './ingest.queue.js';
 import {
   ChunkSettingsDto,
@@ -26,7 +32,8 @@ import {
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_ACCEPTED_MESSAGE = '上传完成，等待向量化';
 
-export interface MarkdownFile {
+/** multer 交给业务层的上传文件，二进制和文本都先留在 buffer 里。 */
+export interface DocumentFile {
   originalname: string;
   buffer: Buffer;
 }
@@ -114,7 +121,7 @@ export class DocumentService {
   async create(
     user: AuthUser,
     knowledgeId: string,
-    file: MarkdownFile | undefined,
+    file: DocumentFile | undefined,
   ): Promise<{ message: string; data: DocumentView }> {
     const knowledge = await this.access.requireReadable(
       knowledgeId,
@@ -123,15 +130,22 @@ export class DocumentService {
       '不能向该知识库添加文档',
     );
     if (!file?.buffer) throw new BadRequestException('请上传文档');
-    const fileName = markdownName(file.originalname);
-    const content = decodeMarkdown(file.buffer);
+    if (file.buffer.length === 0) throw new BadRequestException('文档内容为空');
+    if (file.buffer.length > MAX_DOCUMENT_BYTES) {
+      throw new BadRequestException('文件过大');
+    }
+    const { fileName, fileType } = normalizeUploadName(file.originalname);
+    // 文本存原文，方便预览；二进制先存 base64，等以后换云存储再改成对象键。
+    const content = isBinaryFileType(fileType)
+      ? file.buffer.toString('base64')
+      : decodeText(file.buffer);
     try {
       const saved = await this.prisma.$transaction(async (tx) => {
         return tx.document.create({
           data: {
             knowledgeId: knowledge.id,
             fileName,
-            fileType: 'md',
+            fileType,
             size: file.buffer.length,
             content,
             chunkMethod: ChunkMethod.FIXED,
@@ -205,6 +219,8 @@ export class DocumentService {
       '知识库不存在',
       '不能删除该文档',
     );
+    // 先删向量。失败就保留文档，用户可以再删一次。
+    await this.ingestQueue.deleteVectors(current.knowledgeId, id);
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.document.delete({ where: { id } });
@@ -229,21 +245,7 @@ export class DocumentService {
   }
 }
 
-function markdownName(originalName: string) {
-  const base = originalName.replace(/\\/g, '/').split('/').pop()?.trim() ?? '';
-  if (!base) throw new BadRequestException('请上传文档');
-  if (base.length > 120) throw new BadRequestException('文件名过长');
-  const lower = base.toLowerCase();
-  if (!lower.endsWith('.md') && !lower.endsWith('.markdown')) {
-    throw new BadRequestException('仅支持 markdown 文件');
-  }
-  return base;
-}
-
-function decodeMarkdown(buffer: Buffer) {
-  if (buffer.length > MAX_DOCUMENT_BYTES) {
-    throw new BadRequestException('文件过大');
-  }
+function decodeText(buffer: Buffer) {
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);

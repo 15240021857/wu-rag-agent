@@ -23,6 +23,7 @@ describe('IngestQueue', () => {
         id: string;
         knowledgeId: string;
         fileName: string;
+        fileType: string;
         content: string;
         vectorStatus: VectorStatus;
       }
@@ -52,6 +53,7 @@ describe('IngestQueue', () => {
       id,
       knowledgeId: 'kb1',
       fileName: `${id}.md`,
+      fileType: 'md',
       content,
       vectorStatus: VectorStatus.PROCESSING,
     };
@@ -88,6 +90,33 @@ describe('IngestQueue', () => {
       where: { id: 'kb1' },
       data: { updatedAt: expect.any(Date) },
     });
+  });
+
+  it('sends the original pdf bytes instead of the stored base64', async () => {
+    const raw = Buffer.from('%PDF-1.4 scanned');
+    const { docs, queue } = setup();
+    docs.set('doc1', {
+      id: 'doc1',
+      knowledgeId: 'kb1',
+      fileName: '条款.PDF',
+      fileType: 'pdf',
+      content: raw.toString('base64'),
+      vectorStatus: VectorStatus.PROCESSING,
+    });
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = init.body as FormData;
+      expect(body.get('name')).toBe('条款.pdf');
+      const file = body.get('file');
+      expect(file).toBeInstanceOf(File);
+      expect((file as File).name).toBe('条款.pdf');
+      expect((file as File).type).toBe('application/pdf');
+      const sent = Buffer.from(await (file as File).arrayBuffer());
+      expect(sent.equals(raw)).toBe(true);
+      return new Response('{}', { status: 200 });
+    });
+
+    queue.enqueue('doc1');
+    await queue.whenIdle();
   });
 
   it('marks the document failed when Python is unavailable and continues', async () => {
@@ -145,5 +174,40 @@ describe('IngestQueue', () => {
     expect(seen).toEqual(['a', 'b']);
     expect(prisma.document.update).toHaveBeenCalledTimes(2);
     expect(prisma.knowledge.update).not.toHaveBeenCalled();
+  });
+
+  it('asks Python to delete vectors for one document', async () => {
+    const { queue } = setup();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await queue.deleteVectors('kb1', 'doc1');
+
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(String(url)).toBe(
+      'http://rag.test/internal/rag/deleteDocVectors?kb_id=kb1&doc_id=doc1',
+    );
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('drops the new vectors when the document disappears during ingest', async () => {
+    const { prisma, docs, queue } = setup();
+    docs.set('doc1', processing('doc1', '# 标题'));
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const target = String(url);
+      if (target.includes('ingestDocFile')) {
+        docs.delete('doc1');
+        return new Response('{}', { status: 200 });
+      }
+      expect(target).toBe(
+        'http://rag.test/internal/rag/deleteDocVectors?kb_id=kb1&doc_id=doc1',
+      );
+      return new Response('{}', { status: 200 });
+    });
+
+    queue.enqueue('doc1');
+    await queue.whenIdle();
+
+    expect(prisma.document.update).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

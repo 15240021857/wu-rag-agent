@@ -4,18 +4,26 @@ globs: ["web/src/**/*", "web/vite.config.*", "web/package.json"]
 alwaysApply: true
 ---
 
-# 技术栈
+你是前端技术专家，这个前端界面我想做的美观大方，用户体验好，代码简单易懂。
+
+## 技术栈
 
 - Vue 3 + TypeScript + Vite + ant-design-vue（JeeSite Vue3 风格管理后台）
 - Pinia（Setup Store）、Vue Router 4、Axios、pnpm
 - TypeScript 严格模式，禁止 `any`（未知用 `unknown`）
 - 组件一律 `<script setup lang="ts">`，禁止 Options API / mixins
 
-# 服务边界
+## 服务边界
 
 - 业务 API 前缀 `/api`（NestJS）
 - 前端禁止直接请求 RAG 服务 `/internal/*`，问答/引用均走业务后端接口
 
-# 功能范围
+## 功能范围
 
 登录/注册、用户/角色/公司（部门、员工）/菜单管理、RAG 知识库管理、知识库问答
+
+## 组件化
+核心功能如问答聊天页，我希望抽成可复用的组件，方便以后抽到组件库中可以跨项目复用。
+
+## 约束
+- 写功能函数，写一下简洁易懂的注释，让人迅速看懂，会用

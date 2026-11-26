@@ -46,7 +46,35 @@ docker compose up -d postgres
 docker compose -f docker-compose.milvus.yml up -d
 ```
 
-## 本机开发
+## 本机开发（热更新）
+
+一条命令拉起 **postgres + Milvus**，并在本机启动三个热更新进程（不走容器里的 web / Nest / RAG）：
+
+```powershell
+.\dev.ps1
+```
+
+```bash
+chmod +x dev.sh
+./dev.sh
+```
+
+| 进程 | 命令 | 地址 |
+|------|------|------|
+| web | `pnpm run dev` | http://localhost:5173 |
+| server | `pnpm run start:dev` | http://localhost:3000 |
+| agent-server | `uv run rag-server` | http://localhost:8001/docs |
+| postgres | `docker compose up -d postgres` | 127.0.0.1:5432 |
+| Milvus | `docker compose -f docker-compose.milvus.yml up -d` | localhost:19530 |
+
+Windows 会打开三个终端标签。关掉对应终端即停该进程。停数据库：
+
+```bash
+docker compose stop postgres
+docker compose -f docker-compose.milvus.yml stop
+```
+
+等价的手工命令：
 
 - 前端：`cd web && pnpm install && pnpm dev`
 - 业务后端：`cd server && pnpm install && pnpm start:dev`（依赖 postgres）

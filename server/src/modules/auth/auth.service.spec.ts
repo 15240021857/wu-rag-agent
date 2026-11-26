@@ -83,7 +83,7 @@ function userRow() {
   return {
     id: 'u1',
     username: 'admin',
-    passwordHash: 'hashed:admin123',
+    passwordHash: 'hashed:123456',
     nickname: '管理员',
     employeeName: '张三',
     companyId: 'c1',
@@ -133,13 +133,13 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
       username: 'admin',
-      passwordHash: 'hashed:admin123',
+      passwordHash: 'hashed:123456',
       status: Status.NORMAL,
     });
 
     const result = await service.login({
       username: 'admin',
-      password: 'admin123',
+      password: '123456',
     });
 
     expect(signAsync).toHaveBeenCalledWith({ sub: 'u1', username: 'admin' });
@@ -154,13 +154,13 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue(null);
 
     await expect(
-      service.login({ username: 'missing', password: 'admin123' }),
+      service.login({ username: 'missing', password: '123456' }),
     ).rejects.toThrow('账号或密码错误');
 
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
       username: 'admin',
-      passwordHash: 'hashed:admin123',
+      passwordHash: 'hashed:123456',
       status: Status.NORMAL,
     });
     await expect(
@@ -174,12 +174,12 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
       username: 'admin',
-      passwordHash: 'hashed:admin123',
+      passwordHash: 'hashed:123456',
       status: Status.DISABLED,
     });
 
     await expect(
-      service.login({ username: 'admin', password: 'admin123' }),
+      service.login({ username: 'admin', password: '123456' }),
     ).rejects.toThrow('账号已停用');
     expect(signAsync).not.toHaveBeenCalled();
   });

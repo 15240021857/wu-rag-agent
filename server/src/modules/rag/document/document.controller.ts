@@ -32,7 +32,7 @@ import { RequirePermissions } from '../../auth/decorators/permissions.decorator.
 import {
   DocumentService,
   MAX_DOCUMENT_BYTES,
-  type MarkdownFile,
+  type DocumentFile,
 } from './document.service.js';
 import {
   ChunkSettingsDto,
@@ -43,7 +43,7 @@ import {
   UploadDocumentDto,
 } from './dto/document.dto.js';
 
-const uploadMarkdown = FileInterceptor('file', {
+const uploadDocument = FileInterceptor('file', {
   limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 },
   defParamCharset: 'utf8',
 });
@@ -64,7 +64,7 @@ export class DocumentController {
 
   @Post()
   @RequirePermissions('rag:document:create')
-  @UseInterceptors(uploadMarkdown)
+  @UseInterceptors(uploadDocument)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -76,11 +76,16 @@ export class DocumentController {
       },
     },
   })
-  @ApiOperation({ summary: '上传文档', operationId: 'createDocument' })
+  @ApiOperation({
+    summary: '上传文档',
+    description:
+      '支持 txt、md、markdown、pdf、docx、xlsx、csv、ppt。PDF 含扫描件。',
+    operationId: 'createDocument',
+  })
   @ApiCreatedData(DocumentView, '上传完成，等待向量化')
   create(
     @CurrentUser() user: AuthUser,
-    @UploadedFile() file: MarkdownFile | undefined,
+    @UploadedFile() file: DocumentFile | undefined,
     @Body() dto: UploadDocumentDto,
   ) {
     return this.documentService.create(user, dto.knowledgeId, file);

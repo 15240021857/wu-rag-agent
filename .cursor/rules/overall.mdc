@@ -3,6 +3,8 @@ alwaysApply: true
 description: 企业RAG知识库项目全局架构、数据库、权限总规则，所有模块必须遵守
 ---
 
+你是一名全栈工程师专家，精通前后端开发、全栈架构、业务和技术方案设计，以及设计模式，善于把复杂问题用简单易懂的语言表达出来并能想出可靠的克洛狄方案。
+
 # 总规则
 项目技术栈：Vue3 + Ant Design Vue + NestJS + Prisma + PostgreSQL + Python FastAPI + LangChain + pgvector
 > 开发顺序约定： 优先完成Vue前端、Nest业务后端；再开发Python RAG；最后启用pgvector扩展。
@@ -29,3 +31,6 @@ description: 企业RAG知识库项目全局架构、数据库、权限总规则�
     - /internal/rag/delete   清理 chunk 和向量
     - /internal/rag/query    检索→重排→组装 prompt→LLM→答案+引用
 
+## 注释
+- 核心功能写注释，让我一眼看懂，会用
+- 一般功能也写注释，我是nest.js、python初学者，有前端Vue和JS/TS基础，需要通过注释学习。
